@@ -1,0 +1,31 @@
+{
+  "name": "server-mgr",
+  "version": "0.1.0",
+  "description": "A simple web interface to manage a server from a raspberry pi",
+  "main": "index.js",
+  "scripts": {
+    "watch": "tsc -w",
+    "serve": "node serve.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-perin/server-mgr.git"
+  },
+  "author": "Marco Perin <info@marco-perin.com>",
+  "license": "AGPL-3.0",
+  "bugs": {
+    "url": "https://github.com/marco-perin/server-mgr/issues"
+  },
+  "homepage": "https://github.com/marco-perin/server-mgr#readme",
+  "devDependencies": {
+    "@types/ws": "^8.5.12",
+    "http-server": "^14.1.1",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "@types/node": "^22.5.4",
+    "ping": "^0.4.4",
+    "wake_on_lan": "^1.0.0",
+    "ws": "^8.18.0"
+  }
+}
