@@ -53,8 +53,7 @@ function tell_status(ws:WebSocket){
 
 }
 
- var intervalID: NodeJS.Timeout | undefined = undefined;
-//var intervalID: number | undefined = undefined;
+var intervalID: NodeJS.Timeout | undefined = undefined;
 
 function sendMessage(ws:WebSocket, msg: common.ToClientMessage){
     ws.send(JSON.stringify(msg));
@@ -106,42 +105,4 @@ wss.on('connection',(ws: WebSocket) => {
     })        
 });
 
-
 console.log(`Listening on ws://localhost:${common.SERVER_PORT}`);
-// (async ()=>{
-    // const text = document.getElementById('txtStatus') as HTMLHeadingElement;
-    // const btn =  document.getElementById('btnAwake') as HTMLButtonElement;
-    // const btnStopPing =  document.getElementById('btnStopPing') as HTMLButtonElement;
-    
-    // if(btn){
-    //     console.log("Found btn")
-    //     btn.addEventListener('click',()=>{
-    //         if(!sent && !awake){
-    //             sent = true;
-    //             wol();
-    //             intervalID = setInterval(ping, 1000);
-    //             text.innerHTML = "interval ID: " + intervalID
-    //         }
-    //     })
-    // }else{
-    //     console.error('button not found');
-    // }
-
-    // if(btnStopPing){
-    //     // console.log("Found btn stop ping")
-    //     console.log(intervalID)
-    //     btnStopPing.addEventListener('click',()=>{
-    //         if(intervalID){
-    //             clearInterval(intervalID)
-    //         }
-    //     })
-    // }
-
-    // if(text)
-    // {    console.log("Found text")
-    //         text.innerHTML = 'UNDEF'
-    // }   else{
-    //     console.error('text element not found')
-    // }
-//     console.log('started script')
-// })();
