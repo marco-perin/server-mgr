@@ -3,6 +3,8 @@ import {writeFileSync, readFileSync, read} from 'node:fs'
 import { readFile } from 'node:fs/promises';
 import {WebSocketServer, WebSocket} from 'ws';
 
+import { networkInterfaces }from 'node:os'
+
 import * as common from './common.mjs'
 
 import {wake} from 'wake_on_lan'
@@ -171,7 +173,18 @@ function refresh_hosts(ws: WebSocket){
     })
 }
 
-console.log(`Listening on ws://localhost:${common.SERVER_PORT}`);
+const interfaces = networkInterfaces()
+// Skip loopback interface
+const non_lo_interface = Object.keys(interfaces).filter(k => k !== 'lo')
+
+const this_interface = non_lo_interface.flatMap(
+  intf => interfaces[intf]?.
+      find(i => i.family === 'IPv4' && i.internal == false)?.address)
+      .filter(add => !!add)
+
+this_interface.forEach(address => {
+  console.log(`Listening on ws://${address}:${common.SERVER_PORT}`);
+});
 
 function add_host(mac_addr: string, ip_addr: string | undefined){
   hosts_config?.hosts.push({mac_addr, ip_addr})
@@ -192,6 +205,7 @@ function save_hosts_config()
 {
   // pretty print
   writeFileSync(HOSTS_FILE, JSON.stringify(hosts_config, null, 2))
+  // Standard json print
   // writeFileSync(HOSTS_FILE, JSON.stringify(hosts_config))
 }
 

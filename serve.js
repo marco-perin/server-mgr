@@ -27,7 +27,5 @@ function cmd(program, args = []) {
 
 cmd('node', ['dist/server.mjs'])
 // TODO: prod mode where we need to listen to address 0.0.0.0
-
-// cmd('http-server', ['-p', '6969', '-a', '127.0.0.1', '-s', '-c-1', '-d', 'false'])
-cmd('http-server', ['-p', '6969', '-a', '127.0.0.1', '-c-1', '-d', 'false'])
-// cmd('http-server', ['-p', '6969', '-a', '0.0.0.0', '-c-1', '-d', 'false'])
+cmd('http-server', ['-p', '6969', '-a', '127.0.0.1', '-s', '-c-1', '-d', 'false'])
+// cmd('http-server', ['-p', '6969', '-a', '0.0.0.0', '-s', '-c-1', '-d', 'false'])
