@@ -15,5 +15,5 @@ npm run watch
 and in another
 
 ```shell
-npm run dev
+npm run serve
 ```

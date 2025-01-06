@@ -4,6 +4,7 @@
   "description": "A simple web interface to manage a server from a raspberry pi",
   "main": "index.mjs",
   "scripts": {
+    "build": "tsc",
     "watch": "tsc -w",
     "serve": "node serve.js"
   },
