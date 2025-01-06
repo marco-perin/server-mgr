@@ -59,7 +59,6 @@ function ping(ws: WebSocket, host: HostConfig, pinged = false){
     }
     else
       ping_promise.probe(ip_addr).then(response => {
-        // console.log('pinged: ', response)
         pinged = response.alive;
         console.log(`Pinging ${ip_addr}: ${response.alive}`)
         if (pinged){
@@ -67,8 +66,6 @@ function ping(ws: WebSocket, host: HostConfig, pinged = false){
             stop_ping(ws, host, response.alive)
         }
         else {
-            // const rint = randomInt(1, 10);
-            // console.log('rint', rint)
             setTimeout(()=>{ ping(ws, host, false)}, 1000);
         }
       });
@@ -209,16 +206,14 @@ function save_hosts_config()
   // writeFileSync(HOSTS_FILE, JSON.stringify(hosts_config))
 }
 
-async function get_hosts(){  
-  const file = await readFile(HOSTS_FILE).catch(err=>{
-      if (hosts_config === undefined ){
-        hosts_config = new HostsConfig([])
-      }
-      console.error(err)
+async function get_hosts(){
+  const file = await readFile(HOSTS_FILE).catch(err =>{
+      assert(hosts_config === undefined)
+      hosts_config = new HostsConfig([])
+      
       console.log(`Creating \`${HOSTS_FILE}\` config file`)
       save_hosts_config();
-      return hosts_config;
+      return JSON.stringify(hosts_config);
   })
-  
   hosts_config = JSON.parse(String(file))
 }
