@@ -205,7 +205,7 @@ function manage_msg_client(ws: WebSocket, msg: common.ToClientMessage, sceneData
 }
 
 (async () => {
-  const ws = new WebSocket(`ws://localhost:${SERVER_WS_PORT}`);
+  const ws = new WebSocket(`ws://${window.location.hostname}:${SERVER_WS_PORT}`);
 
   const statusText = document.getElementById("txtStatus") as HTMLSpanElement;
   const timerText = document.getElementById('txtTimer') as HTMLSpanElement
