@@ -1,1 +1,8 @@
-node_modules/**
+
+node_modules
+
+# output files
+dist
+
+# Host configuration file
+hosts.json
