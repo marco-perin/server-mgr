@@ -19,7 +19,7 @@ const toClientOnlyMessageKinds = [
 
 const toServerOtherMessageKinds = [
   'AddHost',
-  // 'StartPing',
+  'UpdateHost',
   'StopPing',
   'RemoveHost',
 ] as const;
@@ -31,6 +31,8 @@ export interface HostConfig {
     name?: string;
   }
 
+export type HostState = 'off' | 'on' | 'starting' | 'error' | undefined
+
 export interface HostsConfig {
   hosts: HostConfig[]
 }
@@ -39,10 +41,10 @@ type ToServerMessageOthers = {
   kind: 'AddHost';
   data: { host:HostConfig}
 } |
-// {
-//   kind: 'StartPing';
-//   data:  { host: HostConfig};
-// } |
+{
+  kind: 'UpdateHost';
+  data:  { newHost: HostConfig,  host: HostConfig};
+} |
 {
   kind: 'StopPing';
   data: { host: HostConfig}
@@ -68,14 +70,14 @@ type ToClientMessageOthers =
 } |
 {
   kind: 'EndPing';
-  data:  { host: HostConfig; alive?: boolean | undefined; };
+  data:  { host: HostConfig; state: HostState };
 } |
 {
   kind: 'RefreshHosts';
   data:  { hosts: HostConfig[] };
 }
 
-assertNever<IfEquals<(typeof toClientOtherMessageKinds)[number],ToClientMessageOthers['kind'], never, unknown>>()
+assertNever<IfEquals<(typeof toClientOtherMessageKinds)[number], ToClientMessageOthers['kind'], never, unknown>>()
 
 function isToServerOthersMessage(arg: any): arg is ToServerMessageOthers{
   if (typeof arg !== 'object' || arg === null) {
@@ -103,6 +105,17 @@ function isToServerOthersMessage(arg: any): arg is ToServerMessageOthers{
   }
   
   switch (k){
+    case 'UpdateHost':
+      if (!('newHost' in arg.data))
+      {
+        console.log('no newHost')
+        return false;
+      }
+      if (!!arg.newHost)
+      {
+        console.log('no newHost data')
+        return false
+      }
     case 'AddHost':
     case 'StopPing':
     case 'RemoveHost':
@@ -118,7 +131,10 @@ function isToServerOthersMessage(arg: any): arg is ToServerMessageOthers{
       }
       return true;
     default:
-      // assertUnreachable(k)
+      // Try-catch because this is used only at compile time to check for
+      //  swict-case exaustiveness
+      try{assertUnreachable(k)}
+      catch{}
       return false;
   }
 }
@@ -143,8 +159,8 @@ function isToClientOthersMessage(arg: any): arg is ToClientMessageOthers{
   switch (k){
     case 'WaitingFor':
       if (!('time' in arg.data)) return false;
-      if (typeof arg.data.time === 'number')  return true
-      return false;
+      if (typeof arg.data.time !== 'number')  return false;
+      return true;
     case 'RefreshHosts':
       if (!('hosts' in arg.data))
       {
@@ -152,12 +168,12 @@ function isToClientOthersMessage(arg: any): arg is ToClientMessageOthers{
         return false;
       }
       
-      if (Array.isArray(arg.data.hosts))
+      if (!Array.isArray(arg.data.hosts))
       {
         // console.log('no array');
-        return true;
+        return false;
       }
-      return false;
+      return true;
     case 'EndPing':
       if (!('host' in arg.data))
       {
@@ -167,11 +183,14 @@ function isToClientOthersMessage(arg: any): arg is ToClientMessageOthers{
       if (typeof arg.data !== 'object')
       {
         console.log('no object');
-        return true;
+        return false;
       }
       return true;
     default:
-      // assertUnreachable(k)
+      // Try-catch because this is used only at compile time to check for
+      //  swict-case exaustiveness
+      try{assertUnreachable(k)}
+      catch{}
       return false;
   }
 }

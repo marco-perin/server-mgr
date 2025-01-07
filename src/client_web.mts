@@ -2,7 +2,7 @@
 // import assert from 'assert';
 // import { AssertionError } from 'assert';
 import * as common from './common.mjs'
-import { HostConfig as HostConfigCommon } from './common.mjs';
+import { HostConfig as HostConfigCommon, HostState } from './common.mjs';
 
 const SERVER_WS_PORT = 6970;
 
@@ -16,38 +16,21 @@ function send_wol(ws: WebSocket, mac_addr:string){
 }
 
 interface HostConfig extends HostConfigCommon {
-  state: 'off' | 'on' | 'starting' | undefined
+  state: HostState
 }
 
 interface SceneData {
-	timerText: HTMLSpanElement,
-	statusText: HTMLSpanElement,
-	wolBtn: HTMLButtonElement,
-	btnStopPing: HTMLButtonElement,
   hostsList: HTMLUListElement,
   hostDataList: HostConfig[]
 };
 
-// function update_timer(elapsed: number,sceneData:SceneData){
-// 	sceneData.timerText.innerHTML = elapsed.toString()
-// }
-// function end_ping(sceneData:SceneData, status: boolean | undefined){
-// 	sceneData.statusText.innerHTML = 'Not Pinging: ' + (status ? 'alive' : 'dead')
-// }
-// function start_ping(sceneData:SceneData){
-// 	sceneData.statusText.innerHTML = 'Pinging'
-// }
-
 const mac_to_id = (mac_addr:string) => mac_addr.replaceAll(/:|-/g,'_')
 
-function host_config_to_html(host: HostConfig, new_host_line: boolean) : HTMLLIElement{
+function host_config_to_html(host: HostConfig, new_host_line: boolean) : HTMLDivElement{
   
-  
-  const ret = document.createElement('li')
+  const ret = document.createElement('div')
   const id = new_host_line ? "NEW_MAC_ADDR" : mac_to_id(host.mac_addr)
   ret.id = id
-
-  // console.log('doing host:', host);
 
   const host_or_new: HostConfig = new_host_line ? {
                 ip_addr : "",
@@ -56,27 +39,36 @@ function host_config_to_html(host: HostConfig, new_host_line: boolean) : HTMLLIE
                 state: undefined
               } : host
 
+  const btn_classes = 'class="btn btn-secondary"'
+
   const base_host_scheme = `
-    <label for="${id}_mac">Mac</label>
-    <input type="text" name="mac" id="${id}_mac" value="${host_or_new.mac_addr}"/>
-    <label for="${id}_ip">Ip</label>
-    <input type="text" name="ip"  id="${id}_ip" value="${host_or_new.ip_addr}" />
-    <label for="${id}_name">Name</label>
-    <input type="text" name="name"  id="${id}_name" value="${host_or_new.name}" />
+    <div class="row">
+      <div class="col-4 col-md input-group">
+      <label class="input-group-text" for="${id}_mac">Mac</label>
+      <input class="form-control" type="text" name="mac" id="${id}_mac" value="${host_or_new.mac_addr}"/>
+      </div>
+      <div class="col-4 col-md input-group">
+      <label class="input-group-text" for="${id}_ip">Ip</label>
+      <input class="form-control" type="text" name="ip"  id="${id}_ip" value="${host_or_new.ip_addr}" />
+      </div>
+      <div class="col-4 col-md input-group">
+      <label class="input-group-text" for="${id}_name">Name</label>
+      <input class="form-control" type="text" name="name"  id="${id}_name" value="${host_or_new.name}" />
+      </div>
+    </div>
+  `
+  
+  const new_host_tail = `
+  <button ${btn_classes} id="${id}_btn_add" mac_id="${id}" disabled>+</button>
   `
 
-  const new_host_tail = `
-  <button id="${id}_btn_add" mac_id="${id}">+</button>
-  `
-  const started_icon = '<span class="material-symbols-outlined" style="color:green">radio_button_checked</span>'
-  // const started_icon = '<span class="material-symbols-outlined" style="color:green">play_ciecle</span>'
+  // https://fonts.google.com/icons
+  const started_icon = '<span class="material-symbols-outlined input-group-text" style="color:green">radio_button_checked</span>'
   // const started_icon = '<span class="material-symbols-outlined" style="color:green">screen_record</span>'
-  // const stopped_icon = '<span class="material-symbols-outlined" style="color:red">radio_button_unchecked</span>'
-  const unknown_icon = '<span class="material-symbols-outlined" style="color:red">radio_button_unchecked</span>'
-  const starting_icon = '<span class="material-symbols-outlined" style="color:grey">radio_button_partial</span>'
-  // const starting_icon = '<span class="material-symbols-outlined" style="color:red">radio_button_checked</span>'
-  const stopped_icon = '<span class="material-symbols-outlined" style="color:grey">radio_button_unchecked</span>'
-  // const unknown_icon = '<span class="material-symbols-outlined" style="color:grey">radio_button_unchecked</span>'
+  const unknown_icon = '<span class="material-symbols-outlined input-group-text" style="color:gray">help</span>'
+  const starting_icon = '<span class="material-symbols-outlined input-group-text" style="color:grey">radio_button_partial</span>'
+  const stopped_icon = '<span class="material-symbols-outlined input-group-text" style="color:grey">radio_button_unchecked</span>'
+  const error_icon = '<span class="material-symbols-outlined input-group-text" style="color:red">running_with_errors</span>'
 
   let status_icon = unknown_icon;
   switch(host_or_new.state){
@@ -89,28 +81,43 @@ function host_config_to_html(host: HostConfig, new_host_line: boolean) : HTMLLIE
     case 'starting':
       status_icon = starting_icon
     break;
+    case 'error':
+      status_icon = error_icon
+    break;
   }
-  const wake_str = host_or_new.state === 'starting' ? 'abort wake' : 'wake'
+  const wake_str = host_or_new.state === 'starting' ? 'abort ping' : 'wake'
+  // TODO: manage abort ping
+  // const wake_disabled = (host_or_new.state === 'starting' || host_or_new.state === 'off') ? '' : 'disabled'
+  const wake_disabled = ( host_or_new.state === 'off') ? '' : 'disabled'
+  const wake_btn = `<button ${btn_classes} id="${id}_btn_wake" mac_id="${id}" ${wake_disabled}>${wake_str}</button>`
+  const delete_text = '<span class="material-symbols-outlined">delete</span>'
   const existing_hosts_tail = `
-  <button id="${id}_btn_wake" mac_id="${id}">${wake_str}</button>
-  <button disabled id="${id}_btn_save" mac_id="${id}">save</button>
-  <button id="${id}_btn_remove" mac_id="${id}">-</button>
+  <div class="btn-group">
+    ${wake_btn}
+    <button ${btn_classes} disabled id="${id}_btn_save" mac_id="${id}">save</button>
+    <button ${btn_classes} id="${id}_btn_remove" mac_id="${id}">${delete_text}</button>
+  </div>
   `
 
   const tail = new_host_line ? new_host_tail : existing_hosts_tail;
   
   if (new_host_line)
-    status_icon = '<span class="material-symbols-outlined" style="color:grey">add_to_queue</span>'
+    status_icon = '<span class="material-symbols-outlined input-group-text" style="color:grey">add_to_queue</span>'
 
   ret.innerHTML = `
-  <div>
-  <div>
+    <div class="col-auto">
     ${status_icon}
+    </div>
+    <div class="col-md order-last order-md-2">
     ${base_host_scheme}
+    </div>
+    <div class="col-2 order-md-last">
     ${tail}
-  </div>
-  </div>
+    </div>
   `
+  ret.classList.add('row')
+  ret.classList.add('mb-3')
+  ret.classList.add('mb-md-1')
   
   return ret
 }
@@ -133,11 +140,10 @@ function host_config_to_htmlnode(host: HostConfig, ws: WebSocket, new_host_line:
       new_btn.addEventListener('click', () => {
         // TODO: add verification
         const mac_addr = new_mac_text?.value
-        // console.log(new_mac_text);
-        // console.log(mac_addr);
         
         if (!mac_addr)
           throw Error("Cannot have empty mac address")
+
         let ip_addr = new_ip_text?.value
         let name = new_name_text?.value
         
@@ -149,18 +155,43 @@ function host_config_to_htmlnode(host: HostConfig, ws: WebSocket, new_host_line:
           data: { host: { mac_addr, ip_addr, name}}
         })
       })
-      
+    const fields =  [new_ip_text,new_mac_text,new_name_text];
+    
+    fields.forEach(field =>{
+      field?.addEventListener('input', _ => {
+        const mac_addr = new_mac_text?.value
+        // const ip_addr = new_ip_text?.value
+        // const name = new_name_text?.value
+        
+        if(mac_addr)
+        {
+          if(new_btn.hasAttribute('disabled'))
+            new_btn.removeAttribute('disabled')
+        }
+        else
+          if(!new_btn.hasAttribute('disabled'))
+            new_btn.setAttribute('disabled', 'true')
+      })
+    })
   }
   else
   {
     const mac_text = mac_to_id(host.mac_addr);
     const wol_btn = new_node.querySelector<HTMLButtonElement>(`[id="${mac_text}_btn_wake"]`);
     const rem_btn = new_node.querySelector<HTMLButtonElement>(`[id="${mac_text}_btn_remove"]`);
-    if (wol_btn === null || rem_btn === null )
+    const save_btn = new_node.querySelector<HTMLButtonElement>(`[id="${mac_text}_btn_save"]`);
+
+    const new_ip_text = new_node.querySelector<HTMLInputElement>(`[id="${mac_text}_ip"]`);
+    const new_mac_text = new_node.querySelector<HTMLInputElement>(`[id="${mac_text}_mac"]`);
+    const new_name_text = new_node.querySelector<HTMLInputElement>(`[id="${mac_text}_name"]`);
+    
+
+    if (wol_btn === null || rem_btn === null || save_btn === null )
     {
       // console.error('unreachable!')
-      throw Error("unreachable")
+      throw Error("malformed row")
     }
+
     wol_btn.addEventListener('click', () => {
       send_wol(ws, host.mac_addr)
     })
@@ -172,12 +203,43 @@ function host_config_to_htmlnode(host: HostConfig, ws: WebSocket, new_host_line:
       })
     })
 
+    save_btn.addEventListener('click', ()=> {
+      if(!new_mac_text?.value)
+          throw Error("Cannot have empty mac address")
+      const newHost: HostConfig = {
+        mac_addr: new_mac_text?.value,
+        ip_addr: new_ip_text?.value,
+        name: new_name_text?.value,
+        state:undefined
+      }
+      sendMessage(ws, {
+        kind: 'UpdateHost',
+        data: { host, newHost}
+      })
+    })
+    const fields =  [new_ip_text,new_mac_text,new_name_text];
+    fields.forEach(field =>{
+      field?.addEventListener('input', _ => {
+        const mac_addr = new_mac_text?.value
+        const ip_addr = new_ip_text?.value
+        const name = new_name_text?.value
+        
+        if(mac_addr !== host.mac_addr || ip_addr !== host.ip_addr || name !== host.name)
+        {
+          if(save_btn.hasAttribute('disabled'))
+            save_btn.removeAttribute('disabled')
+        }
+        else
+          if(!save_btn.hasAttribute('disabled'))
+            save_btn.setAttribute('disabled', 'true')
+      })
+    })
   }
   return new_node
 }
 
 
-function refresh_hosts(ws: WebSocket, sceneData: SceneData, overwrite: boolean ){
+function refresh_hosts(ws: WebSocket, sceneData: SceneData, overwrite_mac: string | undefined){
   const childs = sceneData.hostsList.children;
   const hosts = sceneData.hostDataList;
 
@@ -194,9 +256,10 @@ function refresh_hosts(ws: WebSocket, sceneData: SceneData, overwrite: boolean )
     const ci = childs[i] as HTMLLIElement;
 
     const host = hosts[i]
-    
-    if (!overwrite && ci.id == mac_to_id(host.mac_addr)){
-      continue
+    if(overwrite_mac)
+    {
+      if(overwrite_mac !== host.mac_addr)
+        continue
     }
     const new_node = host_config_to_htmlnode(host, ws, i >= hosts.length)
     sceneData.hostsList.replaceChild(new_node, ci)
@@ -238,11 +301,8 @@ function manage_msg_client(ws: WebSocket, msg: common.ToClientMessage, sceneData
         console.error("no host for waiting mac addr")
         throw Error("host for waiting for not existing")
       }
-      if (msg.data.alive === undefined)
-        sceneData.hostDataList[hostidx].state = undefined
-      else
-        sceneData.hostDataList[hostidx].state = msg.data.alive ? 'on' : 'off'
-      refresh_hosts(ws, sceneData, true)
+      sceneData.hostDataList[hostidx].state = msg.data.state
+      refresh_hosts(ws, sceneData, msg.data.host.mac_addr)
     }
     return;
     case 'WaitingFor':
@@ -252,12 +312,12 @@ function manage_msg_client(ws: WebSocket, msg: common.ToClientMessage, sceneData
         throw Error("host for waiting for not existing")
       }
       sceneData.hostDataList[hostidx].state = 'starting'
-      refresh_hosts(ws, sceneData, true)
+      refresh_hosts(ws, sceneData, msg.data.host.mac_addr)
       return;
 
     case 'RefreshHosts':
       sceneData.hostDataList = common_hosts_to_client(msg.data.hosts, sceneData.hostDataList)
-      refresh_hosts(ws, sceneData, false);
+      refresh_hosts(ws, sceneData, undefined);
       return;
     default:
       common.assertUnreachable(msg);
@@ -277,26 +337,9 @@ function common_hosts_to_client(commonHosts: HostConfigCommon[], current_hosts: 
 (async () => {
   const ws = new WebSocket(`ws://${window.location.hostname}:${SERVER_WS_PORT}`);
 
-  const statusText = document.getElementById("txtStatus") as HTMLSpanElement;
-  const timerText = document.getElementById('txtTimer') as HTMLSpanElement
-  const btn =  document.getElementById('btnAwake') as HTMLButtonElement;
-  // btn.addEventListener('click', ()=>{
-	//   send_wol(ws);
-  // })
-  const btnStopPing =  document.getElementById('btnStopPing') as HTMLButtonElement;
-  // btnStopPing.addEventListener('click',()=>{
-	// sendMessage(ws,{
-	// 	kind: 'StopPing',
-	// 	data: ''
-	// });
-  // });
   const hostsList = document.getElementById('hosts_list') as HTMLUListElement
   
   const sceneData: SceneData = {
-		statusText,
-		timerText,
-		wolBtn: btn,
-		btnStopPing,
     hostsList,
     hostDataList: []
   }

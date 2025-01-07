@@ -1,0 +1,13 @@
+
+.material-symbols-outlined {
+  vertical-align: middle;
+  font-variation-settings:
+  'wght' 400,
+  'opsz' 24
+}
+
+button > .material-symbols-outlined {
+  font-variation-settings:
+  'wght' 200,
+  'opsz' 20
+}

@@ -10,7 +10,7 @@ import * as common from './common.mjs'
 import {wake} from 'wake_on_lan'
 
 import ping_pkg from 'ping'
-import { HostConfig } from './common.mjs';
+import { HostConfig, HostState } from './common.mjs';
 import assert from 'node:assert';
 const {promise: ping_promise} = ping_pkg
 
@@ -36,12 +36,12 @@ const pingData: { start_time: [seconds:number, nseconds:number] | undefined } = 
   start_time: undefined,
 };
 
-function stop_ping(ws: WebSocket, host: HostConfig, alive: boolean | undefined) {
+function stop_ping(ws: WebSocket, host: HostConfig, state: HostState) {
   // TODO: Actually stop pinging
   // clearInterval(intervalID)
   sendMessage(ws, {
-    kind: "EndPing",
-    data: {host, alive},
+    kind: 'EndPing',
+    data: {host, state},
   });
 }
 
@@ -61,12 +61,11 @@ function ping(ws: WebSocket, host: HostConfig){
     else
       ping_once(host).then(response => {
         // pinged = (randomInt(5) > 3) || response.alive;
-        console.log('h:', host.ip_addr, 'r\n', response)
+        // console.log('h:', host.ip_addr, 'r\n', response)
         const pinged = response.alive;
         console.log(`Pinging ${ip_addr}: ${pinged}`)
         if (pinged){
-            // awake = true;
-            stop_ping(ws, host, pinged)
+            stop_ping(ws, host, 'on')
         }
         else {
             setTimeout(()=>{ ping(ws, host)}, 1000);
@@ -120,6 +119,15 @@ async function manage_msg_server(ws: WebSocket, msg: common.ToServerMessage){
           });
           await ping_all_hosts(Array.from(wss.clients))
           return;
+        case 'UpdateHost':
+        {
+          update_host(msg.data)
+          wss.clients.forEach((client: WebSocket) => {
+            refresh_hosts(client)
+          });
+          await ping_all_hosts(Array.from(wss.clients))
+        }
+        return;
         case 'RemoveHost':
           remove_host(msg.data.host.mac_addr)
           
@@ -178,7 +186,7 @@ async function ping_all_hosts(wss: WebSocket[]){
           kind: 'EndPing',
           data: {
             host: h,
-            alive: r.host === undefined ? undefined : r.alive,
+            state: r.host === undefined ? 'error' : (r.alive ? 'on' : 'off'),
           }
         })
       })
@@ -230,6 +238,16 @@ this_interface.forEach(address => {
 
 function add_host(host: HostConfig){
   hosts_config?.hosts.push(host)
+  save_hosts_config()
+}
+function update_host(opts: { host: HostConfig, newHost: HostConfig}){
+  
+  const {host, newHost} = opts
+
+  const hi = hosts_config?.hosts.findIndex(h => h.mac_addr === host.mac_addr)
+  assert(hi && hi > 0)
+  assert(hosts_config?.hosts[hi])
+  hosts_config.hosts[hi] = newHost
   save_hosts_config()
 }
 
