@@ -12,13 +12,14 @@ const toServerOnlyMessageKinds = [
 ] as const;
 
 const toClientOnlyMessageKinds = [
-    'StartPing',
+    // 'StartPing',
     // 'EndPing', // ahead
     // 'WaitingFor',
 ] as const;
 
 const toServerOtherMessageKinds = [
   'AddHost',
+  // 'StartPing',
   'StopPing',
   'RemoveHost',
 ] as const;
@@ -26,7 +27,8 @@ const toServerOtherMessageKinds = [
 
 export interface HostConfig {
     mac_addr: string,
-    ip_addr: string | undefined
+    ip_addr?: string | undefined,
+    name?: string;
   }
 
 export interface HostsConfig {
@@ -37,6 +39,10 @@ type ToServerMessageOthers = {
   kind: 'AddHost';
   data: { host:HostConfig}
 } |
+// {
+//   kind: 'StartPing';
+//   data:  { host: HostConfig};
+// } |
 {
   kind: 'StopPing';
   data: { host: HostConfig}
@@ -58,18 +64,18 @@ const toClientOtherMessageKinds = [
 type ToClientMessageOthers =  
 {
   kind: 'WaitingFor';
-  data:  {time: number};
+  data:  { host: HostConfig; time: number };
 } |
 {
   kind: 'EndPing';
-  data:  { host: HostConfig; alive: boolean | undefined; };
+  data:  { host: HostConfig; alive?: boolean | undefined; };
 } |
 {
   kind: 'RefreshHosts';
   data:  { hosts: HostConfig[] };
 }
 
-assertNever<IfEquals<(typeof toClientOtherMessageKinds)[number],ToClientMessageOthers['kind'],never,unknown>>()
+assertNever<IfEquals<(typeof toClientOtherMessageKinds)[number],ToClientMessageOthers['kind'], never, unknown>>()
 
 function isToServerOthersMessage(arg: any): arg is ToServerMessageOthers{
   if (typeof arg !== 'object' || arg === null) {
@@ -153,18 +159,17 @@ function isToClientOthersMessage(arg: any): arg is ToClientMessageOthers{
       }
       return false;
     case 'EndPing':
-      if (!('alive' in arg.data))
+      if (!('host' in arg.data))
       {
-        console.log('no alive')
+        console.log('no host')
         return false;
       }
-      
-      if (typeof arg.data !== 'boolean')
+      if (typeof arg.data !== 'object')
       {
-        console.log('no boolean');
+        console.log('no object');
         return true;
       }
-      return false;
+      return true;
     default:
       // assertUnreachable(k)
       return false;

@@ -14,9 +14,6 @@ import { HostConfig } from './common.mjs';
 import assert from 'node:assert';
 const {promise: ping_promise} = ping_pkg
 
-var sent: boolean = false;
-var awake: boolean = false;
-
 const wss = new WebSocketServer({
   port: common.SERVER_PORT,
 });
@@ -40,8 +37,8 @@ const pingData: { start_time: [seconds:number, nseconds:number] | undefined } = 
 };
 
 function stop_ping(ws: WebSocket, host: HostConfig, alive: boolean | undefined) {
-  // clearInterval(intervalID)
   // TODO: Actually stop pinging
+  // clearInterval(intervalID)
   sendMessage(ws, {
     kind: "EndPing",
     data: {host, alive},
@@ -50,70 +47,82 @@ function stop_ping(ws: WebSocket, host: HostConfig, alive: boolean | undefined) 
 
 const broadcast_addr: string = '192.168.2.255'
 
-function ping(ws: WebSocket, host: HostConfig, pinged = false){
-    tell_status(ws)
+async function ping_once(host:HostConfig){
+  assert(host.ip_addr)
+  return await ping_promise.probe(host.ip_addr)
+}
+function ping(ws: WebSocket, host: HostConfig){
+    tell_status(host, ws)
     const ip_addr = host.ip_addr;
 
     if (!ip_addr){
       stop_ping(ws, host, undefined)
     }
     else
-      ping_promise.probe(ip_addr).then(response => {
-        pinged = response.alive;
-        console.log(`Pinging ${ip_addr}: ${response.alive}`)
+      ping_once(host).then(response => {
+        // pinged = (randomInt(5) > 3) || response.alive;
+        console.log('h:', host.ip_addr, 'r\n', response)
+        const pinged = response.alive;
+        console.log(`Pinging ${ip_addr}: ${pinged}`)
         if (pinged){
-            awake = true;
-            stop_ping(ws, host, response.alive)
+            // awake = true;
+            stop_ping(ws, host, pinged)
         }
         else {
-            setTimeout(()=>{ ping(ws, host, false)}, 1000);
+            setTimeout(()=>{ ping(ws, host)}, 1000);
         }
       });
 }
 
-function tell_status(ws: WebSocket){
+function tell_status(host: HostConfig,ws: WebSocket){
     if (!pingData.start_time) pingData.start_time = process.hrtime();
     const dt = process.hrtime(pingData.start_time);
     sendMessage(ws, {
       kind: "WaitingFor",
-      data: { time: dt[0]}
+      data: { host, time: dt[0]}
     });
 
 }
 
-var intervalID: NodeJS.Timeout | undefined = undefined;
-
 function sendMessage(ws: WebSocket, msg: common.ToClientMessage){
     ws.send(JSON.stringify(msg));
 }
-function manage_msg_server(ws: WebSocket, msg: common.ToServerMessage){
+async function manage_msg_server(ws: WebSocket, msg: common.ToServerMessage){
     console.log('received message of kind',msg.kind);
     switch (msg.kind) {
         case "WOL":
-            wol(msg.data);
-            assert(hosts_config !== undefined)
-            const host = hosts_config?.hosts.find(h => h.mac_addr === msg.data)
-            assert(host !== undefined, `host for MAC addr ${msg.data} not existing`)
-            ping(ws, host);
-            return;
+        {
+          wol(msg.data);
+          assert(hosts_config !== undefined)
+          const host = hosts_config?.hosts.find(h => h.mac_addr === msg.data)
+          assert(host !== undefined, `host for MAC addr ${msg.data} not existing`)
+          ping(ws, host);
+        }
+        return;
         case 'Hello':
-            console.log('Client says hello! text:', msg.data)
-            return
+          console.log('Client says hello! text:', msg.data)
+          return
         case 'GetStatus':
-            tell_status(ws)
-            return;
+        {
+          const host = hosts_config?.hosts.find(h=>h.mac_addr === msg.data)
+          assert(host)
+          tell_status(host,ws)
+        }
+        return;
         case 'StopPing':
-            stop_ping(ws, msg.data.host, undefined);
-            return;
+          stop_ping(ws, msg.data.host, undefined);
+          return;
         case 'AddHost':
           // throw Error('Not Implemented');
-          add_host(msg.data.host.mac_addr,msg.data.host.ip_addr)
+          add_host(msg.data.host)
           wss.clients.forEach((client: WebSocket) => {
             refresh_hosts(client)
           });
+          await ping_all_hosts(Array.from(wss.clients))
           return;
         case 'RemoveHost':
-          remove_host(msg.data.host.mac_addr,msg.data.host.ip_addr)
+          remove_host(msg.data.host.mac_addr)
+          
           wss.clients.forEach((client: WebSocket) => {
             refresh_hosts(client)
           });
@@ -132,7 +141,7 @@ wss.on('connection',(ws: WebSocket) => {
        data: 'LOOL' 
     })
     
-    ws.addEventListener('message',(event)=>{
+    ws.addEventListener('message', (event) => {
         let obj: undefined | common.Message;
 
         try {
@@ -153,11 +162,47 @@ wss.on('connection',(ws: WebSocket) => {
       console.log('client disconnected')
     })
     
-    refresh_hosts(ws)
+    refresh_hosts(ws).then(_=> ping_all_hosts([ws]))
 });
 
+async function ping_all_hosts(wss: WebSocket[]){
+  if(!hosts_config) return []
+  // assert(hosts_config)
+  const pingpromises = hosts_config.hosts.map(async h => ping_once(h)
+      // assert(hosts_config)
+      // const h = hosts_config.hosts[i]
+      .then( r=> {
+      wss.forEach( ws => {
+        // console.log('h:', h.ip_addr, 'r\n', r)
+        sendMessage(ws, {
+          kind: 'EndPing',
+          data: {
+            host: h,
+            alive: r.host === undefined ? undefined : r.alive,
+          }
+        })
+      })
+    })
+  )
+  const resps = await Promise.all(pingpromises)
+  // if (wss){
+  //   resps.forEach((r,i)=> {
+  //     assert(hosts_config)
+  //     const h = hosts_config.hosts[i]
+  //     wss.forEach( ws => {
+  //       console.log('h:', h.ip_addr, 'r\n', r)
+  //       sendMessage(ws, {
+  //         kind: 'EndPing',
+  //         data: {alive:r.alive, host: h}
+  //       })
+  //     })
+  //   })
+  // }
+  return resps
+}
+
 function refresh_hosts(ws: WebSocket){
-  get_hosts().then( _=>{
+  return get_hosts().then( _=>{
       if (hosts_config !== undefined)
         sendMessage(ws,{
           kind: 'RefreshHosts',
@@ -183,14 +228,14 @@ this_interface.forEach(address => {
   console.log(`Listening on ws://${address}:${common.SERVER_PORT}`);
 });
 
-function add_host(mac_addr: string, ip_addr: string | undefined){
-  hosts_config?.hosts.push({mac_addr, ip_addr})
+function add_host(host: HostConfig){
+  hosts_config?.hosts.push(host)
   save_hosts_config()
 }
 
-function remove_host(mac_addr: string, ip_addr: string | undefined){
+function remove_host(mac_addr: string){
   assert(hosts_config)
-  console.log('removing host', mac_addr, ip_addr);
+  console.log('removing host', mac_addr);
   hosts_config.hosts = hosts_config?.hosts.filter(h => h.mac_addr !== mac_addr)
   save_hosts_config()
 }
@@ -216,4 +261,15 @@ async function get_hosts(){
       return JSON.stringify(hosts_config);
   })
   hosts_config = JSON.parse(String(file))
+  
+  assert(hosts_config)
+  // if (hosts_config.hosts.every(h => h.name === undefined))
+  //  {
+  //    for (let hi = 0; hi <  hosts_config.hosts.length; hi++) {
+  //       const host = hosts_config.hosts[hi];
+  //       host.name = ""
+  //       hosts_config.hosts[hi] = host;
+  //   }
+  //   save_hosts_config()
+  // }
 }
