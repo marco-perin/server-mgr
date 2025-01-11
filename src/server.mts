@@ -257,8 +257,12 @@ wss.on('connection', (ws: WebSocket, req) => {
     });
 });
 
-async function ping_all_hosts(wss: WebSocket[]) {
-  if (!hosts_config) return [];
+( async () => {
+  await get_hosts().then(_ => console.log("Loaded config file"));
+})
+
+async function ping_all_hosts(wss: WebSocket[]){
+  if(!hosts_config) return []
   // assert(hosts_config)
   const pingpromises = hosts_config.hosts.map(async (h) =>
     ping_once(h)
@@ -352,28 +356,35 @@ function remove_host(mac_addr: string) {
 const HOSTS_FILE = 'hosts.json';
 let hosts_config: HostsConfig | undefined;
 
-function save_hosts_config() {
+function save_hosts_config(file_name = HOSTS_FILE)
+{
   // pretty print
-  writeFileSync(HOSTS_FILE, JSON.stringify(hosts_config, null, 2));
+  writeFileSync(file_name, JSON.stringify(hosts_config, null, 2))
   // Standard json print
   // writeFileSync(HOSTS_FILE, JSON.stringify(hosts_config))
 }
 
 async function get_hosts() {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const file = await readFile(HOSTS_FILE).catch((_err: unknown) => {
-    assert(hosts_config === undefined);
-    hosts_config = new HostsConfig([]);
+    // This happens if the config is deleted while the app is running.  
+    // assert(hosts_config === undefined)
+    // So dont raise exception here
+    if(hosts_config)
+    {
+      console.warn(
+     '`hosts_config` was probably deleted during execution.\n' + 
+      `Dumping old config to \`${HOSTS_FILE}.old\` just in case it was a mistake'`)
+        save_hosts_config(`${HOSTS_FILE}.old`)
+    } 
 
-    console.log(`Creating \`${HOSTS_FILE}\` config file`);
+    const payload: unknown = JSON.parse(String(file));
+    hosts_config = payload as HostsConfig;
+    // hosts_config = new HostsConfig([])
+    
+    console.log(`Creating \`${HOSTS_FILE}\` config file`)
     save_hosts_config();
     return JSON.stringify(hosts_config);
-  });
-  const payload: unknown = JSON.parse(String(file));
-
-  hosts_config = payload as HostsConfig;
-
-  assert(hosts_config);
+    
   // if (hosts_config.hosts.every(h => h.name === undefined))
   //  {
   //    for (let hi = 0; hi <  hosts_config.hosts.length; hi++) {
@@ -383,4 +394,8 @@ async function get_hosts() {
   //   }
   //   save_hosts_config()
   // }
+  })
+  
+  hosts_config = JSON.parse(String(file))
+  assert(hosts_config, "Could not parse config file!")
 }
