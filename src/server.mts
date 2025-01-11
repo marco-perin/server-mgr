@@ -245,7 +245,7 @@ function update_host(opts: { host: HostConfig, newHost: HostConfig}){
   const {host, newHost} = opts
   assert(hosts_config, "Host config should be defined!")
   const hi = hosts_config.hosts.findIndex(h => h.mac_addr === host.mac_addr)
-  assert(hi && hi > 0, `Cannot find host with mac address "${host.mac_addr}"`)
+  assert(hi >= 0, `Cannot find host with mac address "${host.mac_addr}"`)
   assert(hosts_config.hosts[hi], `Host with mac address "${host.mac_addr}" not found in local config`)
   hosts_config.hosts[hi] = newHost
   save_hosts_config()
