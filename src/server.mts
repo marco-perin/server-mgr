@@ -31,15 +31,21 @@ function wol(mac_address: string) {
   wake(mac_address, { address: address });
   console.log('done');
 }
-const pingData: {
-  start_time: [seconds: number, nseconds: number] | undefined;
-} = {
-  start_time: undefined,
-};
+
+const pingData: Map<
+  string,
+  {
+    // Get this from process.hrtime()
+    start_time: [number, number];
+    stop_requested: boolean;
+  }
+> = new Map();
 
 function stop_ping(ws: WebSocket, host: HostConfig, state: HostState) {
-  // TODO: Actually stop pinging
-  // clearInterval(intervalID)
+  const pd = pingData.get(host.mac_addr);
+  if (pd) {
+    pd.stop_requested = true;
+  }
   sendMessage(ws, {
     kind: 'EndPing',
     data: { host, state },
@@ -49,50 +55,70 @@ function stop_ping(ws: WebSocket, host: HostConfig, state: HostState) {
 const broadcast_addr: string = '192.168.2.255';
 
 async function ping_once(host: HostConfig) {
-  // assert(host.ip_addr)
   if (!host.ip_addr) {
     return undefined;
   }
   return await ping_promise.probe(host.ip_addr);
 }
+
 function ping(ws: WebSocket, host: HostConfig) {
+  if (!pingData.has(host.mac_addr)) {
+    pingData.set(host.mac_addr, {
+      start_time: process.hrtime(),
+      stop_requested: false,
+    });
+  }
   tell_status(host, ws);
   const ip_addr = host.ip_addr;
 
   if (!ip_addr) {
     stop_ping(ws, host, undefined);
-  } else
-    ping_once(host)
-      .then((response) => {
-        // pinged = (randomInt(5) > 3) || response.alive;
-        // console.log('h:', host.ip_addr, 'r\n', response)
-        const pinged = response?.alive ? 'OK' : 'KO';
-        console.log(`Pinging ${ip_addr}: ${pinged}`);
-        if (response?.alive) {
-          stop_ping(ws, host, 'on');
-        } else {
-          setTimeout(() => {
-            ping(ws, host);
-          }, 1000);
-        }
-      })
-      .catch((e: unknown) => {
-        console.log('error pinging once:', e);
-      });
+    return;
+  }
+
+  const pd = pingData.get(host.mac_addr);
+  assert(pd);
+  if (pd.stop_requested) {
+    pingData.delete(host.mac_addr);
+    return;
+  }
+
+  ping_once(host)
+    .then((response) => {
+      // pinged = (randomInt(5) > 3) || response.alive;
+      // console.log('h:', host.ip_addr, 'r\n', response)
+      const pinged = response?.alive ? 'OK' : 'KO';
+      console.log(`Pinging ${ip_addr}: ${pinged}`);
+      if (response?.alive) {
+        stop_ping(ws, host, 'on');
+      } else {
+        setTimeout(() => {
+          ping(ws, host);
+        }, 1000);
+      }
+    })
+    .catch((e: unknown) => {
+      console.log('error pinging once:', e);
+    });
 }
 
 function tell_status(host: HostConfig, ws: WebSocket) {
-  if (!pingData.start_time) pingData.start_time = process.hrtime();
-  const dt = process.hrtime(pingData.start_time);
+  // if (!pingData.start_time) pingData.start_time = process.hrtime();
+  const pd = pingData.get(host.mac_addr);
+
+  assert(pd);
+
+  const dt = process.hrtime(pd.start_time);
   sendMessage(ws, {
     kind: 'WaitingFor',
-    data: { host, time: dt[0] },
+    data: { host, time: dt[0] + 1e-9 * dt[1] },
   });
 }
 
 function sendMessage(ws: WebSocket, msg: common.ToClientMessage) {
   ws.send(JSON.stringify(msg));
 }
+
 async function manage_msg_server(ws: WebSocket, msg: common.ToServerMessage) {
   console.log('received message of kind', msg.kind);
   switch (msg.kind) {
@@ -122,7 +148,6 @@ async function manage_msg_server(ws: WebSocket, msg: common.ToServerMessage) {
       stop_ping(ws, msg.data.host, undefined);
       return;
     case 'AddHost':
-      // throw Error('Not Implemented');
       add_host(msg.data.host);
       wss.clients.forEach((client: WebSocket) => {
         refresh_hosts(client).catch((e: unknown) => {
@@ -199,7 +224,17 @@ wss.on('connection', (ws: WebSocket, req) => {
   });
 
   ws.addEventListener('close', () => {
-    console.log('client disconnected');
+    console.log(
+      'client disconnected: ',
+      // req.socket.localAddress, // undefined on disconnect (?)
+      req.socket.remoteAddress
+    );
+    if (wss.clients.size == 0) {
+      // If no clients are connected anymore, stop the ping process
+      pingData.forEach((pd) => {
+        pd.stop_requested = true;
+      });
+    }
   });
 
   refresh_hosts(ws)
