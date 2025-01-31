@@ -112,8 +112,8 @@ function host_to_str(
   return ` ${line_sel_start} [${stat}] | ${mac} | ${ip} | ${name}${line_sel_end}\n`;
 }
 
-function asyncc(method: (callback?: (x?: unknown) => void) => void) {
-  return new Promise((resolve) => {
+function asyncc(method: (callback?: (x?: Error) => void) => void) {
+  return new Promise((resolve: (x?: Error) => void) => {
     method(resolve);
   });
 }
@@ -309,9 +309,11 @@ const data_ret_map: { [key: string]: Action | undefined } = {
   '\u001b[D': 'left',
 };
 
-async function runQueue(queue: WaitQueue<Promise<unknown>>) {
-  await queue.pop();
-  await runQueue(queue);
+async function runQueue(queue: WaitQueueStop) {
+  const task = await queue.pop();
+  // If we get  true here, it's beacuse we either had an Error or a stopTask()
+  //  so stop the waiting.
+  if (!task) await runQueue(queue);
 }
 
 function on_data(
@@ -324,7 +326,7 @@ function on_data(
   switch (mapped) {
     case 'close':
       logSync('emitting close');
-      process.exit();
+      process.kill(process.pid, 'SIGINT');
       break;
     case 'down':
       if (sceneData.curr_line === undefined) {
@@ -356,8 +358,14 @@ function on_data(
   }
 }
 
-async function cleanup() {
-  await asyncc((cb) => process.stdout.write('\u001b[?25h', cb));
+type WaitQueueStop = WaitQueue<
+  Promise<void> | Promise<Error | undefined> | Promise<boolean>
+>;
+
+async function stopTask() {
+  return new Promise((resolve: (val: boolean) => void) => {
+    resolve(true);
+  });
 }
 
 (async () => {
@@ -368,7 +376,7 @@ async function cleanup() {
     await fsa.rm(LOG_FILENAME);
   }
 
-  const queue = new WaitQueue<Promise<unknown>>();
+  const queue: WaitQueueStop = new WaitQueue();
 
   const queuePromise = runQueue(queue).catch((e: unknown) => {
     console.log('ERROR RUNNING QUEUE', e);
@@ -437,21 +445,53 @@ async function cleanup() {
   });
 
   ws.addEventListener('close', (event) => {
-    logSync('got close event', event);
+    logSync('got ws close event', event);
   });
 
   ws.addEventListener('error', (event) => {
-    logSync('got error event', event);
+    logSync('got ws error event', event);
   });
 
-  // [`exit`, `SIGINT`, `SIGUSR1`, `SIGUSR2`, `uncaughtException`, `SIGTERM`].forEach((eventType) => {
-  //   process.on(eventType, cleanup.bind(null, eventType));
-  // })
-
-  process.on('beforeExit', (code) => {
-    console.log('Process beforeExit event with code: ', code);
-    logSync('Process beforeExit event with code: ', code);
+  // catching signals and do something before exit
+  [
+    'SIGHUP',
+    'SIGINT',
+    'SIGQUIT',
+    'SIGILL',
+    'SIGTRAP',
+    'SIGABRT',
+    'SIGBUS',
+    'SIGFPE',
+    'SIGUSR1',
+    'SIGSEGV',
+    'SIGUSR2',
+    'SIGTERM',
+  ].forEach(function (sig) {
+    // Ignore no awaited promise here, since it is known that for some tasks
+    //  the async tasks will not be guaranteed to be finished, but hey,
+    //  it's js afterall
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
+    process.on(sig, terminator);
   });
+
+  async function terminator(evtOrExitCodeOrError: number | string | Error) {
+    logSync('terminator with event:', evtOrExitCodeOrError);
+
+    try {
+      // Signal to the queue to stop
+      queue.push(stopTask());
+      // Restore cursor
+      process.stdout.write('\u001b[?25h');
+      // await async code here
+      await queuePromise;
+      // Optionally: Handle evtOrExitCodeOrError here
+    } catch (e) {
+      console.error('EXIT HANDLER ERROR', e);
+      logSync('EXIT HANDLER ERROR', e);
+    }
+
+    process.exit(isNaN(+evtOrExitCodeOrError) ? 1 : +evtOrExitCodeOrError);
+  }
 
   process.on('exit', (code) => {
     logSync('Process exit event with code:', code);
