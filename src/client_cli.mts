@@ -330,7 +330,7 @@ function on_data(
       break;
     case 'down':
       if (sceneData.curr_line === undefined) {
-        sceneData.curr_line = 0;
+        sceneData.curr_line = -1;
       }
       if (sceneData.curr_line < sceneData.currentHosts.length - 1)
         sceneData.curr_line = sceneData.curr_line + 1;
@@ -405,7 +405,7 @@ async function stopTask() {
   const sceneData: SceneData = {
     currentHosts: [],
     newHosts: [],
-    curr_line: 0,
+    curr_line: undefined,
     line_offset: 0,
     menu_window: 'main_window',
   };
