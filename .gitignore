@@ -6,3 +6,7 @@ dist
 
 # Host configuration file
 hosts.json
+
+# client_cli.mts log files
+log.txt
+log.old.txt
