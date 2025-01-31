@@ -29,6 +29,31 @@ interface SceneData {
 const LOG_FILENAME = 'log.txt';
 const LOG_FILENAME_OLD = 'log.old.txt';
 
+// Signals to catch for which to call the terminator
+const TERM_SIGNALS = [
+  'SIGHUP',
+  'SIGINT',
+  'SIGQUIT',
+  'SIGILL',
+  'SIGTRAP',
+  'SIGABRT',
+  'SIGBUS',
+  'SIGFPE',
+  'SIGUSR1',
+  'SIGSEGV',
+  'SIGUSR2',
+  'SIGTERM',
+] as const;
+
+function sendMessage(ws: WebSocket, msg: common.ToServerMessage) {
+  ws.send(JSON.stringify(msg));
+}
+
+function send_wol(ws: WebSocket, mac_addr: string) {
+  console.log('sending wol package');
+  sendMessage(ws, { kind: 'WOL', data: mac_addr });
+}
+
 function get_log_msg(
   ...msgs: (string | number | object | undefined | unknown)[]
 ): string {
@@ -193,6 +218,7 @@ async function refresh_hosts(
       sceneData.currentHosts.splice(new_l_total + i - 2, 1);
     }
   }
+  await log('finished refreshing hosts');
 }
 
 async function redraw_hosts(sceneData: SceneData) {
@@ -254,8 +280,8 @@ async function manage_msg_client(
       return;
     case 'EndPing':
       {
-        // end_ping(sceneData, msg.data.alive);
-        const hostidx = sceneData.currentHosts.findIndex(
+        // logSync(msg.data.host, sceneData);
+        const hostidx = sceneData.newHosts.findIndex(
           (h) => h.mac_addr === msg.data.host.mac_addr
         );
         if (hostidx < 0) {
@@ -264,20 +290,25 @@ async function manage_msg_client(
           console.error('no host for waiting mac addr');
           throw Error('host for waiting for not existing');
         }
-        sceneData.currentHosts[hostidx].state = msg.data.state;
+        sceneData.newHosts[hostidx].state = msg.data.state;
         await refresh_hosts(ws, sceneData, msg.data.host.mac_addr);
       }
       return;
-    // return;
-    // case 'WaitingFor':
-    //   const hostidx = sceneData.hosts.findIndex(h => h.mac_addr === msg.data.host.mac_addr)
-    //   if(hostidx < 0){
-    //     console.error("no host for waiting mac addr")
-    //     throw Error("host for waiting for not existing")
-    //   }
-    //   sceneData.hosts[hostidx].state = 'starting'
-    //   refresh_hosts(ws, sceneData, msg.data.host.mac_addr)
-    //   return;
+    case 'WaitingFor':
+      {
+        const hostidx = sceneData.newHosts.findIndex(
+          (h) => h.mac_addr === msg.data.host.mac_addr
+        );
+        if (hostidx < 0) {
+          await log('cannot find host for mac address', msg.data.host.mac_addr);
+          return;
+          console.error('no host for waiting mac addr');
+          throw Error('host for waiting for not existing');
+        }
+        sceneData.newHosts[hostidx].state = 'starting';
+        await refresh_hosts(ws, sceneData, msg.data.host.mac_addr);
+      }
+      return;
 
     case 'RefreshHosts':
       await log('going to call refresh hosts');
@@ -293,20 +324,36 @@ async function manage_msg_client(
   }
 }
 
-type Action = 'up' | 'down' | 'right' | 'left' | 'esc' | 'close' | 'enter';
+type Action =
+  | 'up'
+  | 'down'
+  | 'right'
+  | 'left'
+  | 'esc'
+  | 'close'
+  | 'enter'
+  // | 'ping'
+  | 'wake';
 
 const data_ret_map: { [key: string]: Action | undefined } = {
   '\u0003': 'close', // CTRL-C
   '\u0004': 'close', // CTRL-D
 
-  '\u0027': 'esc', // Esc
+  '\u001b': 'esc', // Esc
 
   '\r': 'enter',
 
   '\u001b[A': 'up',
+  k: 'up',
   '\u001b[B': 'down',
+  j: 'down',
   '\u001b[C': 'right',
   '\u001b[D': 'left',
+
+  // p: 'ping',
+  // P: 'ping',
+  w: 'wake',
+  W: 'wake',
 };
 
 async function runQueue(queue: WaitQueueStop) {
@@ -317,6 +364,7 @@ async function runQueue(queue: WaitQueueStop) {
 }
 
 function on_data(
+  ws: WebSocket,
   data: Buffer,
   sceneData: SceneData,
   queue: WaitQueue<Promise<unknown>>
@@ -334,7 +382,6 @@ function on_data(
       }
       if (sceneData.curr_line < sceneData.currentHosts.length - 1)
         sceneData.curr_line = sceneData.curr_line + 1;
-      // sceneData.curr_line = sceneData.curr_line + 1;
 
       queue.push(redraw_hosts(sceneData));
       break;
@@ -350,11 +397,28 @@ function on_data(
       break;
 
     case 'enter':
-      // log('enter!');
+      // TODO: enter edit menu
+      // break;
+      throw Error('Not implemented');
+    case 'esc':
+      // TODO: redraw only corresponding line
+      sceneData.curr_line = undefined;
+      queue.push(redraw_hosts(sceneData));
+      break;
+    case 'wake':
+      if (!sceneData.curr_line) return;
+      send_wol(ws, sceneData.currentHosts[sceneData.curr_line].mac_addr);
       break;
     default:
       // log("EOL!", EOL);
-      logSync('unknown code:', JSON.stringify(data.toString('utf-8')));
+      if (mapped)
+        logSync(
+          'not implemented code:',
+          JSON.stringify(data.toString('utf-8')),
+          'Action:',
+          mapped.toString()
+        );
+      else logSync('unknown code:', JSON.stringify(data.toString('utf-8')));
   }
 }
 
@@ -412,14 +476,14 @@ async function stopTask() {
   queue.push(
     write_header(
       sceneData,
-      'Host List:'
-      // [
-      //   'Hosts: Press ',
-      //   ' [Enter] to edit',
-      //   ' [N] for new',
-      //   ' [P] to ping',
-      //   ' [Del] to delete',
-      // ].join('\n')
+      [
+        'Hosts: Press ',
+        // ' [Enter] to edit',
+        // ' [N] for new',
+        ' [{up,k}/{down,j}] select host',
+        ' [W] send WOL',
+        // ' [Del] to delete',
+      ].join('\n')
     )
   );
 
@@ -446,6 +510,12 @@ async function stopTask() {
 
   ws.addEventListener('close', (event) => {
     logSync('got ws close event', event);
+    queue.push(
+      asyncc((cb) => {
+        process.stdout.write('Server Disconnected!', cb);
+      })
+    );
+    process.kill(process.pid, 'SIGINT');
   });
 
   ws.addEventListener('error', (event) => {
@@ -453,20 +523,7 @@ async function stopTask() {
   });
 
   // catching signals and do something before exit
-  [
-    'SIGHUP',
-    'SIGINT',
-    'SIGQUIT',
-    'SIGILL',
-    'SIGTRAP',
-    'SIGABRT',
-    'SIGBUS',
-    'SIGFPE',
-    'SIGUSR1',
-    'SIGSEGV',
-    'SIGUSR2',
-    'SIGTERM',
-  ].forEach(function (sig) {
+  TERM_SIGNALS.forEach(function (sig) {
     // Ignore no awaited promise here, since it is known that for some tasks
     //  the async tasks will not be guaranteed to be finished, but hey,
     //  it's js afterall
@@ -498,7 +555,7 @@ async function stopTask() {
   });
 
   process.stdin.on('data', (buff) => {
-    on_data(buff, sceneData, queue);
+    on_data(ws, buff, sceneData, queue);
   });
 
   queue.push(log('Client initialized'));
