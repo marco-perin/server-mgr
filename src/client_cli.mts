@@ -120,7 +120,6 @@ function host_to_str(
   const mac = host.mac_addr.padStart(17); // length of 17
   const ip = (host.ip_addr || '--').padEnd(15);
   const name = host.name || '--';
-  // const line_sel_start = (sceneData.curr_line !== undefined && sceneData.curr_line === idx) ? '->' : '  '
   const line_sel_start =
     sceneData.curr_line !== undefined && sceneData.curr_line === idx
       ? '\x1b[7m'
@@ -130,9 +129,6 @@ function host_to_str(
       ? '\x1b[0m'
       : '';
 
-  // if (new_host_line) {
-  //   return ` ${line_sel_start} [ + ] | ${mac} | ${ip} | ${name}${line_sel_end}\n`;
-  // }
   return ` ${line_sel_start} [${stat}] | ${mac} | ${ip} | ${name}${line_sel_end}\n`;
 }
 
@@ -150,7 +146,6 @@ function asyncc(method: (callback?: (x?: Error) => void) => void) {
 async function refresh_hosts(
   ws: WebSocket,
   sceneData: SceneData,
-  // newHosts: HostConfigCommon[],
   overwrite_mac: string | undefined
 ) {
   const curr_hosts = sceneData.currentHosts;
@@ -158,12 +153,10 @@ async function refresh_hosts(
 
   const curr_l = curr_hosts.length;
 
-  // + 1 for the last entry empty, to add an host
   const new_l_total = new_hosts.length;
   const delta_l = curr_l - new_l_total;
   const line_offset = sceneData.line_offset;
 
-  // await log('[refresh_hosts] lo:', line_offset, 'om:', overwrite_mac);
   if (!overwrite_mac) {
     if (line_offset == 0) {
       console.log('\u001b[2J');
@@ -174,13 +167,6 @@ async function refresh_hosts(
     }
   } else await asyncc((cb) => process.stdout.cursorTo(0, line_offset, cb));
 
-  // await asyncc((cb) =>
-  //   process.stdout.write(
-  //     host_to_str(sceneData, { mac_addr: '---', state: undefined }, 0, true),
-  //     cb
-  //   )
-  // );
-
   for (let i = 0; i < curr_l && i < new_hosts.length; i++) {
     const host = new_hosts[i];
     if (overwrite_mac) {
@@ -190,11 +176,7 @@ async function refresh_hosts(
       }
     }
     await asyncc((cb) =>
-      process.stdout.write(
-        host_to_str(sceneData, host, i),
-        // host_to_str(sceneData, host, i + 1, i >= new_hosts.length),
-        cb
-      )
+      process.stdout.write(host_to_str(sceneData, host, i), cb)
     );
     sceneData.currentHosts[i] = {
       ...host,
@@ -202,15 +184,10 @@ async function refresh_hosts(
   }
 
   if (delta_l < 0) {
-    // less hosts on html
+    // Displaying less hosts than the new ones
     for (let i = 0; i < -delta_l; i++) {
-      // console.log('i:',i)
-      // console.log(hosts);
       const host = new_hosts[curr_l + i];
-      // console.log('host', host);
-      // const new_node = host_config_to_htmlnode(host, ws, i >= -dl - 1);
       await asyncc((cb) =>
-        // process.stdout.write(host_to_str(sceneData, host, i + 1, false), cb)
         process.stdout.write(host_to_str(sceneData, host, i), cb)
       );
 
@@ -218,7 +195,6 @@ async function refresh_hosts(
     }
   } else {
     for (let i = delta_l; i > 0; i--) {
-      // let c_t_remove = curr_hosts[hl_total + i - 2];
       sceneData.currentHosts.splice(new_l_total + i - 2, 1);
     }
   }
@@ -243,12 +219,6 @@ async function redraw_hosts(sceneData: SceneData) {
     await asyncc((cb) => process.stdout.clearScreenDown(cb));
   }
 
-  // await asyncc((cb) => {
-  //   process.stdout.write(
-  //     host_to_str(sceneData, { mac_addr: '---' }, 0, true),
-  //     cb
-  //   );
-  // });
   for (const { h, i } of hosts.map((h, i) => ({ h, i }))) {
     await asyncc((cb) => {
       // process.stdout.write(host_to_str(sceneData, h, i + 1, false), cb);
