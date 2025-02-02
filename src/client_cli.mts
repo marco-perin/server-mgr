@@ -111,8 +111,7 @@ const HOST_STATUS_CHAR: KeyType = {
 function host_to_str(
   sceneData: SceneData,
   host: HostConfig | undefined,
-  idx: number,
-  new_host_line: boolean
+  idx: number
 ) {
   if (!host) {
     return '???????????????????????????????????????\n';
@@ -131,9 +130,9 @@ function host_to_str(
       ? '\x1b[0m'
       : '';
 
-  if (new_host_line) {
-    return ` ${line_sel_start} [ + ] | ${mac} | ${ip} | ${name}${line_sel_end}\n`;
-  }
+  // if (new_host_line) {
+  //   return ` ${line_sel_start} [ + ] | ${mac} | ${ip} | ${name}${line_sel_end}\n`;
+  // }
   return ` ${line_sel_start} [${stat}] | ${mac} | ${ip} | ${name}${line_sel_end}\n`;
 }
 
@@ -192,7 +191,7 @@ async function refresh_hosts(
     }
     await asyncc((cb) =>
       process.stdout.write(
-        host_to_str(sceneData, host, i, i >= new_hosts.length),
+        host_to_str(sceneData, host, i),
         // host_to_str(sceneData, host, i + 1, i >= new_hosts.length),
         cb
       )
@@ -212,7 +211,7 @@ async function refresh_hosts(
       // const new_node = host_config_to_htmlnode(host, ws, i >= -dl - 1);
       await asyncc((cb) =>
         // process.stdout.write(host_to_str(sceneData, host, i + 1, false), cb)
-        process.stdout.write(host_to_str(sceneData, host, i, false), cb)
+        process.stdout.write(host_to_str(sceneData, host, i), cb)
       );
 
       sceneData.currentHosts.push(host);
@@ -253,7 +252,7 @@ async function redraw_hosts(sceneData: SceneData) {
   for (const { h, i } of hosts.map((h, i) => ({ h, i }))) {
     await asyncc((cb) => {
       // process.stdout.write(host_to_str(sceneData, h, i + 1, false), cb);
-      process.stdout.write(host_to_str(sceneData, h, i, false), cb);
+      process.stdout.write(host_to_str(sceneData, h, i), cb);
     });
   }
 }
