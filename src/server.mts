@@ -154,7 +154,11 @@ async function manage_msg_server(ws: WebSocket, msg: common.ToServerMessage) {
           console.log('error:', e);
         });
       });
-      await ping_all_hosts(Array.from(wss.clients));
+      await new Promise((resolve) => setTimeout(resolve, 500)).then(
+        async () => {
+          await ping_all_hosts(Array.from(wss.clients));
+        }
+      );
       return;
     case 'UpdateHost':
       {
@@ -164,7 +168,11 @@ async function manage_msg_server(ws: WebSocket, msg: common.ToServerMessage) {
             console.log('error refresh_hosts:', e);
           });
         });
-        await ping_all_hosts(Array.from(wss.clients));
+        await new Promise((resolve) => setTimeout(resolve, 500)).then(
+          async () => {
+            await ping_all_hosts(Array.from(wss.clients));
+          }
+        );
       }
       return;
     case 'RemoveHost':
@@ -238,9 +246,14 @@ wss.on('connection', (ws: WebSocket, req) => {
   });
 
   refresh_hosts(ws)
-    .then(() => ping_all_hosts([ws]))
+    .then(() => new Promise((resolve) => setTimeout(resolve, 500)))
+    .then(async () => {
+      await ping_all_hosts([ws]).catch((e: unknown) => {
+        console.log('error pinging once:', e);
+      });
+    })
     .catch((e: unknown) => {
-      console.log('error pinging once:', e);
+      console.log('error refreshing hosts on connect:', e);
     });
 });
 
