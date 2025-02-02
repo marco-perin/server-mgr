@@ -7,7 +7,7 @@ import * as common from './common.mjs';
 import { HostConfig as HostConfigCommon, HostState } from './common.mjs';
 import assert from 'assert';
 
-import WaitQueue from 'wait-queue';
+import { AsyncQueue } from './async_queue.mjs';
 
 const SERVER_WS_PORT = 6970;
 
@@ -360,18 +360,11 @@ const data_ret_map: { [key: string]: Action | undefined } = {
   W: 'wake',
 };
 
-async function runQueue(queue: WaitQueueStop) {
-  const task = await queue.pop();
-  // If we get  true here, it's beacuse we either had an Error or a stopTask()
-  //  so stop the waiting.
-  if (!task) await runQueue(queue);
-}
-
 function on_data(
   ws: WebSocket,
   data: Buffer,
   sceneData: SceneData,
-  queue: WaitQueue<Promise<unknown>>
+  queue: AsyncQueue
 ) {
   const mapped = data_ret_map[data.toString('utf-8')];
 
@@ -426,16 +419,6 @@ function on_data(
   }
 }
 
-type WaitQueueStop = WaitQueue<
-  Promise<void> | Promise<Error | undefined> | Promise<boolean>
->;
-
-async function stopTask() {
-  return new Promise((resolve: (val: boolean) => void) => {
-    resolve(true);
-  });
-}
-
 (async () => {
   process.stdin.resume(); // so the program will not close instantly
 
@@ -444,9 +427,9 @@ async function stopTask() {
     await fsa.rm(LOG_FILENAME);
   }
 
-  const queue: WaitQueueStop = new WaitQueue();
+  const queue = new AsyncQueue();
 
-  const queuePromise = runQueue(queue).catch((e: unknown) => {
+  const queuePromise = queue.run().catch((e: unknown) => {
     console.log('ERROR RUNNING QUEUE', e);
   });
 
@@ -502,7 +485,7 @@ async function stopTask() {
       assert(common.isToClientMessage(parsed));
       obj = parsed;
     } catch {
-      queue.push(log('GOT INVALID MESSAGE (not json)', obj));
+      queue.push(log('GOT INVALID MESSAGE (not json): ', obj));
       return;
     }
 
@@ -526,6 +509,12 @@ async function stopTask() {
 
   ws.addEventListener('error', (event) => {
     logSync('got ws error event', event);
+    queue.push(
+      asyncc((cb) => {
+        process.stdout.write('\nWebsocket error!', cb);
+      })
+    );
+    process.kill(process.pid, 'SIGINT');
   });
 
   // catching signals and do something before exit
@@ -542,7 +531,7 @@ async function stopTask() {
 
     try {
       // Signal to the queue to stop
-      queue.push(stopTask());
+      queue.stop();
       // Restore cursor
       process.stdout.write('\u001b[?25h');
       // await async code here
