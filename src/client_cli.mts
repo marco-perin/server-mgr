@@ -137,6 +137,11 @@ function host_to_str(
   return ` ${line_sel_start} [${stat}] | ${mac} | ${ip} | ${name}${line_sel_end}\n`;
 }
 
+/**
+ *  Used to convert a function with a callback to an async one.
+ * @example await asyncc((cb) => process.stdout.cursorTo(0, 0, cb));
+ * @example await asyncc((cb) => process.stdout.clearScreenDown(cb));
+ * */
 function asyncc(method: (callback?: (x?: Error) => void) => void) {
   return new Promise((resolve: (x?: Error) => void) => {
     method(resolve);
@@ -448,6 +453,7 @@ async function stopTask() {
 
   process.stdin.setRawMode(true);
   process.stdin.setEncoding('utf-8');
+
   // Hide cursor
   queue.push(
     asyncc((cb) => {
@@ -473,6 +479,7 @@ async function stopTask() {
     line_offset: 0,
     menu_window: 'main_window',
   };
+
   queue.push(
     write_header(
       sceneData,
@@ -550,10 +557,13 @@ async function stopTask() {
     process.exit(isNaN(+evtOrExitCodeOrError) ? 1 : +evtOrExitCodeOrError);
   }
 
+  // Exit event.
+  // Cannot handle async code in here, it is best to rely on signals
   process.on('exit', (code) => {
     logSync('Process exit event with code:', code);
   });
 
+  // Handle keyboard input
   process.stdin.on('data', (buff) => {
     on_data(ws, buff, sceneData, queue);
   });
